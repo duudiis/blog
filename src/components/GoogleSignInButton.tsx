@@ -29,8 +29,18 @@ export default function GoogleSignInButton({ onCredential }: Props) {
       init();
     }
 
-    function init() {
-      const clientId = (process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "").trim();
+    async function init() {
+      const w = window as unknown as Window & { __PUBLIC_ENV?: { GOOGLE_CLIENT_ID?: string } };
+      let clientId = (process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || (w.__PUBLIC_ENV?.GOOGLE_CLIENT_ID ?? "") || "").trim();
+      if (!clientId) {
+        try {
+          const res = await fetch('/api/auth/google', { method: 'GET' });
+          if (res.ok) {
+            const data = await res.json();
+            if (data && typeof data.clientId === 'string') clientId = data.clientId.trim();
+          }
+        } catch {}
+      }
       try { console.debug("[GIS] clientId present:", !!clientId); } catch {}
       if (!clientId) {
         if (divRef.current) {
@@ -47,12 +57,12 @@ export default function GoogleSignInButton({ onCredential }: Props) {
           };
         };
       };
-      const w = window as unknown as Window & { google?: GoogleId };
+      const w2 = window as unknown as Window & { google?: GoogleId };
       const tryRender = (attemptsLeft: number) => {
         if (!divRef.current) return;
-        if (w.google && w.google.accounts && w.google.accounts.id && typeof w.google.accounts.id.renderButton === 'function') {
+        if (w2.google && w2.google.accounts && w2.google.accounts.id && typeof w2.google.accounts.id.renderButton === 'function') {
           try { divRef.current.setAttribute('data-gsi-status', 'rendering'); } catch {}
-          w.google.accounts.id.initialize({
+          w2.google.accounts.id.initialize({
             client_id: clientId,
             callback: (resp: { credential?: string }) => {
               if (resp && resp.credential) onCredential(resp.credential);
@@ -63,7 +73,7 @@ export default function GoogleSignInButton({ onCredential }: Props) {
             const containerWidth = 320;
             const width = Math.max(240, containerWidth);
             divRef.current.innerHTML = "";
-            w.google!.accounts.id.renderButton(divRef.current, {
+            w2.google!.accounts.id.renderButton(divRef.current, {
               type: "standard",
               theme: "outline",
               text: "signin_with",

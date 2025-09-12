@@ -28,6 +28,17 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={montserrat.variable}>
+        {/* Inject public env at runtime without extra network calls */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function(){
+                try{window.__PUBLIC_ENV=window.__PUBLIC_ENV||{};}catch(e){}
+                try{window.__PUBLIC_ENV.GOOGLE_CLIENT_ID=${JSON.stringify((process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || '').trim())};}catch(e){}
+              })();
+            `,
+          }}
+        />
         <ModalProvider>
           <Navbar />
           {children}
