@@ -8,9 +8,9 @@ export default function PostLayout({ children }: { children: React.ReactNode }) 
   return children;
 }
 
-export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   try {
-    const { slug } = params;
+    const { slug } = await params;
     type PostRow = { id: number; slug: string; title: string; content_md: string; content_html: string; cover_image?: string | null; published: number; created_at: string; updated_at: string };
     const p = await get<PostRow>(`SELECT id, slug, title, content_md, content_html, cover_image, published, created_at, updated_at FROM posts WHERE slug = ?`, [slug]);
     if (!p) return { title: "Not found" };
