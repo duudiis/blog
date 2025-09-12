@@ -2,6 +2,8 @@
 
 # ---- Base node image version ----
 ARG NODE_VERSION=20.12.2
+# Build-time public env for client bundle (must be set at build)
+ARG NEXT_PUBLIC_GOOGLE_CLIENT_ID
 
 # ---- Builder stage ----
 FROM node:${NODE_VERSION}-alpine AS builder
@@ -9,6 +11,10 @@ WORKDIR /app
 
 # Install system deps if needed (sqlite bindings use pure JS in sqlite3 >=5 w prebuilds)
 RUN apk add --no-cache libc6-compat
+
+# Ensure Next.js build can see the client ID at build time
+ARG NEXT_PUBLIC_GOOGLE_CLIENT_ID
+ENV NEXT_PUBLIC_GOOGLE_CLIENT_ID=${NEXT_PUBLIC_GOOGLE_CLIENT_ID}
 
 # Copy dependency manifests first for better caching
 COPY package.json package-lock.json* ./
