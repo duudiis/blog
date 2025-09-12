@@ -2,8 +2,6 @@
 
 # ---- Base node image version ----
 ARG NODE_VERSION=20.12.2
-# Build-time public env for client bundle (must be set at build)
-ARG NEXT_PUBLIC_GOOGLE_CLIENT_ID
 
 # ---- Builder stage ----
 FROM node:${NODE_VERSION}-alpine AS builder
@@ -12,9 +10,16 @@ WORKDIR /app
 # Install system deps if needed (sqlite bindings use pure JS in sqlite3 >=5 w prebuilds)
 RUN apk add --no-cache libc6-compat
 
-# Ensure Next.js build can see the client ID at build time
+# ---- Build args ----
 ARG NEXT_PUBLIC_GOOGLE_CLIENT_ID
-ENV NEXT_PUBLIC_GOOGLE_CLIENT_ID=${NEXT_PUBLIC_GOOGLE_CLIENT_ID}
+ARG ADMIN_EMAIL
+ARG JWT_SECRET
+
+# Set ENV for Next.js build
+ENV NEXT_PUBLIC_GOOGLE_CLIENT_ID=${NEXT_PUBLIC_GOOGLE_CLIENT_ID} \
+    ADMIN_EMAIL=${ADMIN_EMAIL} \
+    JWT_SECRET=${JWT_SECRET} \
+    NEXT_TELEMETRY_DISABLED=1
 
 # Copy dependency manifests first for better caching
 COPY package.json package-lock.json* ./
@@ -27,16 +32,21 @@ RUN --mount=type=cache,target=/root/.npm \
 COPY . .
 
 # Build Next.js app
-ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
 # ---- Runner stage ----
 FROM node:${NODE_VERSION}-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production \
-    NEXT_TELEMETRY_DISABLED=1
+    NEXT_TELEMETRY_DISABLED=1 \
+    PORT=3000
 
 RUN apk add --no-cache libc6-compat
+
+# ---- Runtime ENV ----
+ENV NEXT_PUBLIC_GOOGLE_CLIENT_ID=${NEXT_PUBLIC_GOOGLE_CLIENT_ID} \
+    ADMIN_EMAIL=${ADMIN_EMAIL} \
+    JWT_SECRET=${JWT_SECRET}
 
 # Copy only the minimal runtime artifacts
 COPY --from=builder /app/package.json /app/package-lock.json* ./
@@ -53,11 +63,8 @@ RUN mkdir -p /app/public/uploads /app/data
 # Expose the data and uploads as volumes so Portainer users can bind host paths
 VOLUME ["/app/data", "/app/public/uploads"]
 
-# Next.js standalone server
-ENV PORT=3000
+# Expose port
 EXPOSE 3000
 
 # Start the app
 CMD ["npm", "run", "start"]
-
-

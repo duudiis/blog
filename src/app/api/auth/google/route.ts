@@ -5,12 +5,6 @@ import type { TokenPayload } from 'google-auth-library';
 const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || '';
 const adminEmail = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
 
-export async function GET() {
-    const cid = (process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || '').trim();
-    if (!cid) return NextResponse.json({ clientId: '', error: 'Missing Google client id' }, { status: 200 });
-    return NextResponse.json({ clientId: cid });
-}
-
 export async function POST(req: NextRequest) {
     if (!clientId) return NextResponse.json({ error: 'Missing Google client id' }, { status: 500 });
     let body: unknown;
