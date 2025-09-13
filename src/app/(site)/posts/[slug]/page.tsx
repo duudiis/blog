@@ -155,7 +155,9 @@ export default function PostPage() {
   useEffect(() => {
     async function loadComments() {
       try {
-        const res = await fetch(`/api/posts/${encodeURIComponent(slug)}/comments`);
+        const t = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+        const headers = t ? { Authorization: `Bearer ${t}` } : undefined;
+        const res = await fetch(`/api/posts/${encodeURIComponent(slug)}/comments`, { headers });
         if (!res.ok) { setComments([]); return; }
         const list = await res.json();
         setComments(Array.isArray(list) ? list : []);

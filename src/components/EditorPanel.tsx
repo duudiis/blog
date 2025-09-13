@@ -92,6 +92,49 @@ export default function EditorPanel() {
   const [isLoadingContent, setIsLoadingContent] = useState<boolean>(false);
   const isHomePage = routeSlug === 'home';
 
+  // UI loading with delayed show and minimum duration to avoid flicker
+  const [uiLoading, setUiLoading] = useState<boolean>(false);
+  const isUiHidden = isLoadingContent || uiLoading;
+  const spinnerStartedAtRef = useRef<number | null>(null);
+  const spinnerDelayTimerRef = useRef<number | null>(null);
+  const spinnerMinTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    // Cleanup timers on unmount
+    return () => {
+      if (spinnerDelayTimerRef.current) { window.clearTimeout(spinnerDelayTimerRef.current); spinnerDelayTimerRef.current = null; }
+      if (spinnerMinTimerRef.current) { window.clearTimeout(spinnerMinTimerRef.current); spinnerMinTimerRef.current = null; }
+    };
+  }, []);
+
+  useEffect(() => {
+    // Manage UI loading with 100ms delay and 500ms minimum duration
+    if (isLoadingContent) {
+      if (spinnerMinTimerRef.current) { window.clearTimeout(spinnerMinTimerRef.current); spinnerMinTimerRef.current = null; }
+      if (spinnerDelayTimerRef.current) { window.clearTimeout(spinnerDelayTimerRef.current); }
+      spinnerDelayTimerRef.current = window.setTimeout(() => {
+        spinnerStartedAtRef.current = Date.now();
+        setUiLoading(true);
+      }, 100);
+    } else {
+      // Loading finished
+      if (spinnerDelayTimerRef.current) { window.clearTimeout(spinnerDelayTimerRef.current); spinnerDelayTimerRef.current = null; }
+      if (uiLoading) {
+        const elapsed = spinnerStartedAtRef.current ? (Date.now() - spinnerStartedAtRef.current) : 0;
+        const remaining = Math.max(0, 500 - elapsed);
+        if (spinnerMinTimerRef.current) { window.clearTimeout(spinnerMinTimerRef.current); }
+        spinnerMinTimerRef.current = window.setTimeout(() => {
+          setUiLoading(false);
+          spinnerStartedAtRef.current = null;
+        }, remaining);
+      } else {
+        // Spinner was never shown, ensure it's not visible
+        setUiLoading(false);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoadingContent]);
+
   useEffect(() => {
     const t = typeof window !== 'undefined' ? localStorage.getItem("token") : null;
     if (t) setToken(t);
@@ -430,8 +473,9 @@ export default function EditorPanel() {
 
   return (
     <>
-      <div key={`toolbar-${routeSlug || 'new'}`} className="floating-toolbar fade-in">
-        <div className="toolbar" role="toolbar" aria-label="Formatting" style={isTitleActive ? { opacity: 0.5, pointerEvents: 'none', cursor: 'not-allowed' } : undefined}>
+      {!isUiHidden ? (
+        <div key={`toolbar-${routeSlug || 'new'}`} className="floating-toolbar fade-in">
+          <div className="toolbar" role="toolbar" aria-label="Formatting" style={isTitleActive ? { opacity: 0.5, pointerEvents: 'none', cursor: 'not-allowed' } : undefined}>
           <button type="button" title="Heading 2 (Ctrl+Alt+2)" aria-label="Heading 2" aria-pressed={formatState.block==='h2'} className={formatState.block==='h2'? 'is-active': ''} onClick={() => toggleBlock('h2')}>
             <svg className="ti" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" aria-hidden="true">
               <text x="41.412" y="52.058" style={{fontFamily:'Roboto, Arial, sans-serif',fontWeight:500,fontSize:27.4,fill:'currentColor'}}>2</text>
@@ -486,63 +530,72 @@ export default function EditorPanel() {
           <button type="button" title="Clear formatting" aria-label="Clear formatting" onClick={clearFormatting}>
             <svg className="ti" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.837 10.163l-4.6 4.6L10 4h4l.777 2.223-2.144 2.144-.627-2.092-1.17 3.888zm5.495.506L19.244 19H15.82l-1.05-3.5H11.5L5 22l-1.5-1.5 17-17L22 5l-5.668 5.67zm-2.31 2.31l-.032.03.032-.01v-.02z" fill="currentColor"/></svg>
           </button>
+          </div>
         </div>
-      </div>
-      <article className="post fade-in is-editor">
-        {coverUrl ? (
-          <div style={{ position: 'relative' }}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={coverUrl} className="post-cover" alt="" onClick={() => onUpload()} />
-            {isUploading ? (
-              <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', background: 'color-mix(in srgb, var(--bg), transparent 30%)', borderRadius: 12 }}>
-                <Spinner size={20} />
-              </div>
-            ) : null}
+      ) : null}
+      <article className={`post is-editor${!isUiHidden ? ' fade-in' : ''}`} aria-busy={uiLoading ? true : undefined}>
+        {uiLoading ? (
+          <div className="fade-in" style={{ display: 'grid', placeItems: 'center', minHeight: 300 }}>
+            <Spinner size={32} stroke={3} />
           </div>
         ) : null}
-        <h1 id="title" className="post-title" ref={titleRef} contentEditable suppressContentEditableWarning data-suppress-placeholder={isLoadingContent ? true : undefined}>
-          {loadedPost?.title || ''}
-        </h1>
-        <div id="meta" className="post-meta post-date">
-          <span title={formatFullDate(loadedPost ? loadedPost.created_at : now)}>{relativeTime(loadedPost ? loadedPost.created_at : now)}</span>
-          {readTime ? (<>
-            <span aria-hidden style={{ margin: '0 6px' }}>·</span>
-            {readTime}
-          </>) : null}
-          {visibility !== 1 ? (
-            <>
-              <span aria-hidden style={{ margin: '0 6px' }}>·</span>
-              {visibility === 2 ? (
-                <>
-                  <svg className="meta-icon-unlisted" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
-                    <path d="M370.999774,3133 L369.999774,3133 C367.662774,3133 365.786774,3130.985 366.019774,3128.6 C366.221774,3126.522 368.089774,3125 370.177774,3125 L370.999774,3125 C371.551774,3125 371.999774,3124.552 371.999774,3124 C371.999774,3123.448 371.551774,3123 370.999774,3123 L370.251774,3123 C366.965774,3123 364.100774,3125.532 364.002774,3128.815 C363.900774,3132.213 366.624774,3135 369.999774,3135 L370.999774,3135 C371.551774,3135 371.999774,3134.552 371.999774,3134 C371.999774,3133.448 371.551774,3133 370.999774,3133 M377.747774,3123 L376.999774,3123 C376.447774,3123 375.999774,3123.448 375.999774,3124 C375.999774,3124.552 376.447774,3125 376.999774,3125 L377.821774,3125 C379.909774,3125 381.777774,3126.522 381.979774,3128.6 C382.212774,3130.985 380.336774,3133 377.999774,3133 L376.999774,3133 C376.447774,3133 375.999774,3133.448 375.999774,3134 C375.999774,3135.104 376.999774,3135 377.999774,3135 C381.374774,3135 384.098774,3132.213 383.996774,3128.815 C383.898774,3125.532 381.033774,3123 377.747774,3123 M368.999774,3128 L378.999774,3128 C379.551774,3128 379.999774,3128.448 379.999774,3129 C379.999774,3130.346 379.210774,3130 368.999774,3130 C368.447774,3130 367.999774,3129.552 367.999774,3129 C367.999774,3128.448 368.447774,3128 368.999774,3128" transform="translate(-364,-3123)" />
-                  </svg>
-                  <span style={{ marginLeft: 6 }}>Unlisted</span>
-                </>
-              ) : (
-                <>
-                  <svg className="meta-icon-private" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                    <path fillRule="evenodd" clipRule="evenodd" d="M19.7071 5.70711C20.0976 5.31658 20.0976 4.68342 19.7071 4.29289C19.3166 3.90237 18.6834 3.90237 18.2929 4.29289L14.032 8.55382C13.4365 8.20193 12.7418 8 12 8C9.79086 8 8 9.79086 8 12C8 12.7418 8.20193 13.4365 8.55382 14.032L4.29289 18.2929C3.90237 18.6834 3.90237 19.3166 4.29289 19.7071C4.68342 20.0976 5.31658 20.0976 5.70711 19.7071L9.96803 15.4462C10.5635 15.7981 11.2582 16 12 16C14.2091 16 16 14.2091 16 12C16 11.2582 15.7981 10.5635 15.4462 9.96803L19.7071 5.70711ZM12.518 10.0677C12.3528 10.0236 12.1792 10 12 10C10.8954 10 10 10.8954 10 12C10 12.1792 10.0236 12.3528 10.0677 12.518L12.518 10.0677ZM11.482 13.9323L13.9323 11.482C13.9764 11.6472 14 11.8208 14 12C14 13.1046 13.1046 14 12 14C11.8208 14 11.6472 13.9764 11.482 13.9323ZM15.7651 4.8207C14.6287 4.32049 13.3675 4 12 4C9.14754 4 6.75717 5.39462 4.99812 6.90595C3.23268 8.42276 2.00757 10.1376 1.46387 10.9698C1.05306 11.5985 1.05306 12.4015 1.46387 13.0302C1.92276 13.7326 2.86706 15.0637 4.21194 16.3739L5.62626 14.9596C4.4555 13.8229 3.61144 12.6531 3.18002 12C3.6904 11.2274 4.77832 9.73158 6.30147 8.42294C7.87402 7.07185 9.81574 6 12 6C12.7719 6 13.5135 6.13385 14.2193 6.36658L15.7651 4.8207ZM12 18C11.2282 18 10.4866 17.8661 9.78083 17.6334L8.23496 19.1793C9.37136 19.6795 10.6326 20 12 20C14.8525 20 17.2429 18.6054 19.002 17.0941C20.7674 15.5772 21.9925 13.8624 22.5362 13.0302C22.947 12.4015 22.947 11.5985 22.5362 10.9698C22.0773 10.2674 21.133 8.93627 19.7881 7.62611L18.3738 9.04043C19.5446 10.1771 20.3887 11.3469 20.8201 12C20.3097 12.7726 19.2218 14.2684 17.6986 15.5771C16.1261 16.9282 14.1843 18 12 18Z" />
-                  </svg>
-                  <span style={{ marginLeft: 6 }}>Private</span>
-                </>
-              )}
-            </>
+        <div style={isUiHidden ? { display: 'none' } : undefined}>
+          {coverUrl ? (
+            <div style={{ position: 'relative' }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={coverUrl} className="post-cover" alt="" onClick={() => onUpload()} />
+              {isUploading ? (
+                <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', background: 'color-mix(in srgb, var(--bg), transparent 30%)', borderRadius: 12 }}>
+                  <Spinner size={20} />
+                </div>
+              ) : null}
+            </div>
           ) : null}
+          <h1 id="title" className="post-title" ref={titleRef} contentEditable suppressContentEditableWarning data-suppress-placeholder={isLoadingContent ? true : undefined}>
+            {loadedPost?.title || ''}
+          </h1>
+          <div id="meta" className="post-meta post-date">
+            <span title={formatFullDate(loadedPost ? loadedPost.created_at : now)}>{relativeTime(loadedPost ? loadedPost.created_at : now)}</span>
+            {readTime ? (<>
+              <span aria-hidden style={{ margin: '0 6px' }}>·</span>
+              {readTime}
+            </>) : null}
+            {visibility !== 1 ? (
+              <>
+                <span aria-hidden style={{ margin: '0 6px' }}>·</span>
+                {visibility === 2 ? (
+                  <>
+                    <svg className="meta-icon-unlisted" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+                      <path d="M370.999774,3133 L369.999774,3133 C367.662774,3133 365.786774,3130.985 366.019774,3128.6 C366.221774,3126.522 368.089774,3125 370.177774,3125 L370.999774,3125 C371.551774,3125 371.999774,3124.552 371.999774,3124 C371.999774,3123.448 371.551774,3123 370.999774,3123 L370.251774,3123 C366.965774,3123 364.100774,3125.532 364.002774,3128.815 C363.900774,3132.213 366.624774,3135 369.999774,3135 L370.999774,3135 C371.551774,3135 371.999774,3134.552 371.999774,3134 C371.999774,3133.448 371.551774,3133 370.999774,3133 M377.747774,3123 L376.999774,3123 C376.447774,3123 375.999774,3123.448 375.999774,3124 C375.999774,3124.552 376.447774,3125 376.999774,3125 L377.821774,3125 C379.909774,3125 381.777774,3126.522 381.979774,3128.6 C382.212774,3130.985 380.336774,3133 377.999774,3133 L376.999774,3133 C376.447774,3133 375.999774,3133.448 375.999774,3134 C375.999774,3135.104 376.999774,3135 377.999774,3135 C381.374774,3135 384.098774,3132.213 383.996774,3128.815 C383.898774,3125.532 381.033774,3123 377.747774,3123 M368.999774,3128 L378.999774,3128 C379.551774,3128 379.999774,3128.448 379.999774,3129 C379.999774,3130.346 379.210774,3130 368.999774,3130 C368.447774,3130 367.999774,3129.552 367.999774,3129 C367.999774,3128.448 368.447774,3128 368.999774,3128" transform="translate(-364,-3123)" />
+                    </svg>
+                    <span style={{ marginLeft: 6 }}>Unlisted</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="meta-icon-private" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                      <path fillRule="evenodd" clipRule="evenodd" d="M19.7071 5.70711C20.0976 5.31658 20.0976 4.68342 19.7071 4.29289C19.3166 3.90237 18.6834 3.90237 18.2929 4.29289L14.032 8.55382C13.4365 8.20193 12.7418 8 12 8C9.79086 8 8 9.79086 8 12C8 12.7418 8.20193 13.4365 8.55382 14.032L4.29289 18.2929C3.90237 18.6834 3.90237 19.3166 4.29289 19.7071C4.68342 20.0976 5.31658 20.0976 5.70711 19.7071L9.96803 15.4462C10.5635 15.7981 11.2582 16 12 16C14.2091 16 16 14.2091 16 12C16 11.2582 15.7981 10.5635 15.4462 9.96803L19.7071 5.70711ZM12.518 10.0677C12.3528 10.0236 12.1792 10 12 10C10.8954 10 10 10.8954 10 12C10 12.1792 10.0236 12.3528 10.0677 12.518L12.518 10.0677ZM11.482 13.9323L13.9323 11.482C13.9764 11.6472 14 11.8208 14 12C14 13.1046 13.1046 14 12 14C11.8208 14 11.6472 13.9764 11.482 13.9323ZM15.7651 4.8207C14.6287 4.32049 13.3675 4 12 4C9.14754 4 6.75717 5.39462 4.99812 6.90595C3.23268 8.42276 2.00757 10.1376 1.46387 10.9698C1.05306 11.5985 1.05306 12.4015 1.46387 13.0302C1.92276 13.7326 2.86706 15.0637 4.21194 16.3739L5.62626 14.9596C4.4555 13.8229 3.61144 12.6531 3.18002 12C3.6904 11.2274 4.77832 9.73158 6.30147 8.42294C7.87402 7.07185 9.81574 6 12 6C12.7719 6 13.5135 6.13385 14.2193 6.36658L15.7651 4.8207ZM12 18C11.2282 18 10.4866 17.8661 9.78083 17.6334L8.23496 19.1793C9.37136 19.6795 10.6326 20 12 20C14.8525 20 17.2429 18.6054 19.002 17.0941C20.7674 15.5772 21.9925 13.8624 22.5362 13.0302C22.947 12.4015 22.947 11.5985 22.5362 10.9698C22.0773 10.2674 21.133 8.93627 19.7881 7.62611L18.3738 9.04043C19.5446 10.1771 20.3887 11.3469 20.8201 12C20.3097 12.7726 19.2218 14.2684 17.6986 15.5771C16.1261 16.9282 14.1843 18 12 18Z" />
+                    </svg>
+                    <span style={{ marginLeft: 6 }}>Private</span>
+                  </>
+                )}
+              </>
+            ) : null}
+          </div>
+          <div
+            id="content"
+            ref={editorRef}
+            className="post-content"
+            data-placeholder="Start writing your post..."
+            data-suppress-placeholder={isLoadingContent ? true : undefined}
+            contentEditable
+            suppressContentEditableWarning
+          />
+          <input ref={coverFileRef} type="file" accept="image/*" hidden />
         </div>
-        <div
-          id="content"
-          ref={editorRef}
-          className="post-content"
-          data-placeholder="Start writing your post..."
-          data-suppress-placeholder={isLoadingContent ? true : undefined}
-          contentEditable
-          suppressContentEditableWarning
-        />
-        <input ref={coverFileRef} type="file" accept="image/*" hidden />
       </article>
-      <div key={`bottombar-${routeSlug || 'new'}`} className="floating-bottombar fade-in">
-        <div className="toolbar" role="toolbar" aria-label="Post actions">
+      {!isUiHidden ? (
+        <div key={`bottombar-${routeSlug || 'new'}`} className="floating-bottombar fade-in">
+          <div className="toolbar" role="toolbar" aria-label="Post actions">
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}>
             {isHomePage ? (
               <div className="slug-wrap" style={{ display: 'flex', alignItems: 'center', gap: 6, flex: '1 1 0' }}>
@@ -619,8 +672,9 @@ export default function EditorPanel() {
               {isSaving ? <span style={{ marginLeft: 8 }}><Spinner size={14} /></span> : null}
             </button>
           </div>
+          </div>
         </div>
-      </div>
+      ) : null}
     </>
   );
 }

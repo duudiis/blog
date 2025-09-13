@@ -14,6 +14,15 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     type PostRow = { id: number; slug: string; title: string; content_md: string; content_html: string; cover_image?: string | null; published: number; created_at: string; updated_at: string };
     const p = await get<PostRow>(`SELECT id, slug, title, content_md, content_html, cover_image, published, created_at, updated_at FROM posts WHERE slug = ?`, [slug]);
     if (!p) return { title: "Not found" };
+    // For private posts, avoid exposing any meaningful metadata
+    if (p.published === 0) {
+      return {
+        title: 'Not found',
+        description: undefined,
+        alternates: { canonical: `/posts/${slug}` },
+        robots: { index: false, follow: false },
+      };
+    }
     const title = p?.title || 'Post';
     const rawMd: string = (p?.content_md || "").toString();
     const fromHtml = (p?.content_html || "").toString().replace(/<[^>]+>/g, ' ');

@@ -10,8 +10,12 @@ export const DELETE = withAuth(async (_req, { params, auth }) => {
     const commentId = Number(id);
     if (!Number.isFinite(commentId)) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
 
-    const post = await get<{ id: number }>('SELECT id FROM posts WHERE slug = ?', [slug]);
+    const post = await get<{ id: number; published: number }>('SELECT id, published FROM posts WHERE slug = ?', [slug]);
     if (!post) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    // Hide private posts from non-admins
+    if (post.published === 0 && !(auth && auth.isAdmin)) {
+        return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
 
     const comment = await get<CommentRow>('SELECT id, post_id, author_email FROM comments WHERE id = ?', [commentId]);
     if (!comment || comment.post_id !== post.id) return NextResponse.json({ error: 'Not found' }, { status: 404 });

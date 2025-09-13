@@ -4,11 +4,15 @@ import { withAuth } from '@/lib/api';
 
 type CommentRow = { id: number; author_email?: string; author_name?: string; author_picture?: string; content: string; created_at: string };
 
-export const GET = withAuth(async (_req, { params }) => {
+export const GET = withAuth(async (_req, { params, auth }) => {
     await initializeDatabase();
     const { slug } = await params;
-    const post = await get<{ id: number }>('SELECT id FROM posts WHERE slug = ?', [slug]);
+    const post = await get<{ id: number; published: number }>('SELECT id, published FROM posts WHERE slug = ?', [slug]);
     if (!post) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    // Hide private posts' existence from non-admins
+    if (post.published === 0 && !(auth && auth.isAdmin)) {
+        return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
     const rows = await all<CommentRow>(
         'SELECT id, author_email, author_name, author_picture, content, created_at FROM comments WHERE post_id = ? ORDER BY datetime(created_at) ASC',
         [post.id]
@@ -20,12 +24,16 @@ export const POST = withAuth(async (req: NextRequest, { params, auth }) => {
     await initializeDatabase();
     if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const { slug } = await params;
-    const post = await get<{ id: number }>('SELECT id FROM posts WHERE slug = ?', [slug]);
+    const post = await get<{ id: number; published: number }>('SELECT id, published FROM posts WHERE slug = ?', [slug]);
     if (!post) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    // Private posts: only admins can interact, and we still respond with 404
+    const isAdmin = !!auth.isAdmin;
+    if (post.published === 0 && !isAdmin) {
+        return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
     const body = await req.json().catch(() => ({}));
     const content = (body.content || '').toString().trim();
     if (!content) return NextResponse.json({ error: 'Content required' }, { status: 400 });
-    const isAdmin = !!auth.isAdmin;
     // Enforce max 3 comments per user per post (except admins)
     if (!isAdmin) {
         const authorEmail = (auth.email || '').toLowerCase();
