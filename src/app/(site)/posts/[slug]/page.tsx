@@ -368,7 +368,7 @@ export default function PostPage() {
         </div>
       )}
       {!isShowingLoading && post ? (
-        <section className="comments" style={{ marginTop: 40, marginBottom: 28 }}>
+        <section className="comments fade-in" style={{ marginTop: 40, marginBottom: 28, animationDelay: '100ms' }}>
           <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '32px 0' }} />
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
             <h2 className="post-title" style={{ fontSize: 20, margin: 0 }}>

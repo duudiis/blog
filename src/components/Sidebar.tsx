@@ -31,6 +31,11 @@ export function Sidebar({ activeSlug, editorMode = false }: { activeSlug?: strin
 	const [hasError, setHasError] = useState(false);
 	const listRef = useRef<HTMLUListElement | null>(null);
 	const hasAutoScrolledRef = useRef(false);
+	const loadIdRef = useRef(0);
+	const isMountedRef = useRef(true);
+	const abortRef = useRef<AbortController | null>(null);
+	const finishTimerRef = useRef<number | null>(null);
+	const maxGuardTimerRef = useRef<number | null>(null);
 	const router = useRouter();
 	const params = useParams<{ slug?: string | string[] }>();
 	const derivedSlug = (() => {
@@ -50,54 +55,89 @@ export function Sidebar({ activeSlug, editorMode = false }: { activeSlug?: strin
 	}
 
 	useEffect(() => {
-		async function load(showSkeleton: boolean) {
-			const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-			let isAdminNow = false;
-			if (token) {
-				try {
-					const me = await fetch('/api/auth/me', { headers: { Authorization: `Bearer ${token}` } });
-					if (me.ok) {
-						const info = await me.json();
-						isAdminNow = !!info?.isAdmin;
-					}
-				} catch {}
-			}
-			const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
-			if (showSkeleton && !hasEverLoaded) setIsLoading(true);
+		// Ensure mounted flag is corrected on mount (handles React Strict Mode re-invocations)
+		isMountedRef.current = true;
+		return () => { isMountedRef.current = false; };
+	}, []);
+
+	useEffect(() => {
+		const MIN_SKELETON_MS = 400;
+		const load = async (showSkeleton: boolean) => {
+			// Cancel any in-flight request and pending finish timer
+			try { abortRef.current?.abort(); } catch {}
+			abortRef.current = new AbortController();
+			if (finishTimerRef.current) { window.clearTimeout(finishTimerRef.current); finishTimerRef.current = null; }
+			if (maxGuardTimerRef.current) { window.clearTimeout(maxGuardTimerRef.current); maxGuardTimerRef.current = null; }
+			const signal = abortRef.current.signal;
+
+			const loadId = ++loadIdRef.current;
+			const startTs = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+			if (showSkeleton) setIsLoading(true);
+			// Hard safety guard: ensure we never stay loading indefinitely
+			maxGuardTimerRef.current = window.setTimeout(() => {
+				if (!isMountedRef.current) return;
+				if (loadIdRef.current !== loadId) return;
+				setIsLoading(false);
+			}, 5000);
 			setHasError(false);
+
+			let isAdminNow = false;
+			const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+			const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+
 			try {
-				const res = await fetch('/api/posts', { headers });
+				if (token) {
+					try {
+						const me = await fetch('/api/auth/me', { headers: { Authorization: `Bearer ${token}` }, signal });
+						if (me.ok) {
+							const info = await me.json();
+							isAdminNow = !!info?.isAdmin;
+						}
+					} catch {}
+				}
+				const res = await fetch('/api/posts', { headers, signal });
 				if (!res.ok) {
 					if (!hasEverLoaded) setPosts([]);
 					setHasError(true);
-					if (showSkeleton && !hasEverLoaded) setIsLoading(false);
 					setIsAdmin(isAdminNow);
-					return;
+				} else {
+					const list = await res.json();
+					if (!Array.isArray(list)) {
+						if (!hasEverLoaded) setPosts([]);
+						setHasError(true);
+						setIsAdmin(isAdminNow);
+					} else {
+						setPosts(list);
+						if (!hasEverLoaded) setHasEverLoaded(true);
+						setIsAdmin(isAdminNow);
+					}
 				}
-				const list = await res.json();
-				if (!Array.isArray(list)) {
-					if (!hasEverLoaded) setPosts([]);
-					setHasError(true);
-					if (showSkeleton && !hasEverLoaded) setIsLoading(false);
-					setIsAdmin(isAdminNow);
-					return;
-				}
-				setPosts(list);
-				if (showSkeleton && !hasEverLoaded) setIsLoading(false);
-				if (!hasEverLoaded) setHasEverLoaded(true);
-				setIsAdmin(isAdminNow);
 			} catch {
 				if (!hasEverLoaded) setPosts([]);
 				setHasError(true);
-				if (showSkeleton && !hasEverLoaded) setIsLoading(false);
-				setIsAdmin(isAdminNow);
+			} finally {
+				const nowTs = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+				const elapsed = nowTs - startTs;
+				const remaining = Math.max(0, MIN_SKELETON_MS - elapsed);
+				finishTimerRef.current = window.setTimeout(() => {
+					if (!isMountedRef.current) return;
+					if (loadIdRef.current !== loadId) return;
+					setIsLoading(false);
+				}, remaining);
+				if (maxGuardTimerRef.current) { window.clearTimeout(maxGuardTimerRef.current); maxGuardTimerRef.current = null; }
 			}
-		}
-		const onChanged = () => { load(false); };
+		};
+
+		const onChanged = () => { load(true); };
 		load(true);
 		if (typeof window !== 'undefined') window.addEventListener('posts:changed', onChanged);
-		return () => { if (typeof window !== 'undefined') window.removeEventListener('posts:changed', onChanged); };
-	}, [hasEverLoaded]);
+		return () => {
+			if (typeof window !== 'undefined') window.removeEventListener('posts:changed', onChanged);
+			try { abortRef.current?.abort(); } catch {}
+			if (finishTimerRef.current) { window.clearTimeout(finishTimerRef.current); finishTimerRef.current = null; }
+			if (maxGuardTimerRef.current) { window.clearTimeout(maxGuardTimerRef.current); maxGuardTimerRef.current = null; }
+		};
+	}, []);
 
 	useEffect(() => {
 		if (hasAutoScrolledRef.current) return;
@@ -121,32 +161,40 @@ export function Sidebar({ activeSlug, editorMode = false }: { activeSlug?: strin
 
 	return (
 		<ul ref={listRef} className="post-list slide-in stagger-list">
-			{editorMode ? (
-				<li className={`post-item${currentActiveSlug === 'home' ? ' is-active' : ''}`} onClick={() => router.push('/editor/home')}>
-					<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-						<strong style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-							<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
-								<path d="M3 10.5L12 3L21 10.5V20C21 20.5523 20.5523 21 20 21H15C14.4477 21 14 20.5523 14 20V15C14 14.4477 13.5523 14 13 14H11C10.4477 14 10 14.4477 10 15V20C10 20.5523 9.55228 21 9 21H4C3.44772 21 3 20.5523 3 20V10.5Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-							</svg>
-							Home Page
-						</strong>
-					</div>
-				</li>
-			) : null}
-			{editorMode ? (<li className="post-sep" aria-hidden />) : null}
-			{editorMode ? (
-				<li className={`post-item${!activeSlug ? ' is-active' : ''}`} onClick={() => createNewPost()}>
-					<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-						<strong style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-							<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
-								<path d="M12 5V19M5 12H19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-							</svg>
-							New Post
-						</strong>
-					</div>
-				</li>
-			) : null}
-			{editorMode ? (<li className="post-sep" aria-hidden />) : null}
+			{editorMode ? (() => {
+				const canLeaveEditor = !!(currentActiveSlug && currentActiveSlug !== 'home');
+				const leaveEditor = () => {
+					if (!canLeaveEditor) return;
+					router.push(`/posts/${encodeURIComponent(currentActiveSlug!)}`);
+				};
+				return (
+					<>
+						<li className="post-item admin-quick is-static" onClick={(e) => { e.stopPropagation(); }}>
+							<div className="admin-actions">
+								<button type="button" className={`chip-btn${currentActiveSlug === 'home' ? ' is-active' : ''}`} onClick={() => router.push('/editor/home')} title="Home">
+									<svg className="ti" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+										<path d="M3 10.5L12 3L21 10.5V20C21 20.5523 20.5523 21 20 21H15C14.4477 21 14 20.5523 14 20V15C14 14.4477 13.5523 14 13 14H11C10.4477 14 10 14.4477 10 15V20C10 20.5523 9.55228 21 9 21H4C3.44772 21 3 20.5523 3 20V10.5Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+										</svg>
+										<span>Home</span>
+								</button>
+								<button type="button" className={`chip-btn${!activeSlug ? ' is-active' : ''}`} onClick={() => createNewPost()} title="New post">
+									<svg className="ti" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+										<path d="M12 5V19M5 12H19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+										</svg>
+									<span>New</span>
+								</button>
+								<button type="button" className="chip-btn" onClick={leaveEditor} disabled={!canLeaveEditor} title={canLeaveEditor ? 'Leave editor and view post' : 'Open a post to view'}>
+									<svg className="ti" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 16 16" aria-hidden>
+										<path fill="currentColor" fillRule="evenodd" d="M11.7071,3.29289 L15.4142,7 L11.7071,10.7071 C11.3166,11.0976 10.6834,11.0976 10.2929,10.7071 C9.90237,10.3166 9.90237,9.68342 10.2929,9.29289 L11.5858,8 L4.5,8 C3.67157,8 3,8.67157 3,9.5 C3,10.3284 3.67157,11 4.5,11 L6,11 C6.55228,11 7,11.4477 7,12 C7,12.5523 6.55228,13 6,13 L4.5,13 C2.567,13 1,11.433 1,9.5 C1,7.567 2.567,6 4.5,6 L11.5858,6 L10.2929,4.70711 C9.90237,4.31658 9.90237,3.68342 10.2929,3.29289 C10.6834,2.90237 11.3166,2.90237 11.7071,3.29289 Z"/>
+									</svg>
+									<span>Leave</span>
+								</button>
+							</div>
+						</li>
+						<li className="post-sep" aria-hidden />
+					</>
+				);
+			})() : null}
 			{isLoading ? (
 				<>
 					{Array.from({ length: 8 }).map((_, i) => (
@@ -157,12 +205,12 @@ export function Sidebar({ activeSlug, editorMode = false }: { activeSlug?: strin
 					))}
 				</>
 			) : null}
-			{!isLoading && hasError ? (
+			{!isLoading && hasError && posts.length === 0 ? (
 				<li className="post-item is-static mt-5" style={{ padding: 0 }}>
 					<div className="empty-state" role="status" aria-live="polite">
 						<div className="empty-icon" dangerouslySetInnerHTML={{ __html: sidebarErrorSvg }} />
 						<h2 className="empty-title">Couldn&apos;t load posts</h2>
-						<p className="empty-desc">Sidebar had a tiny meltdown. Please refresh.</p>
+						<p className="empty-desc px-6">This sidebar had a tiny meltdown. Please refresh.</p>
 					</div>
 				</li>
 			) : null}
@@ -175,7 +223,7 @@ export function Sidebar({ activeSlug, editorMode = false }: { activeSlug?: strin
 					</div>
 				</li>
 			) : null}
-			{posts.map((p, i) => {
+			{!isLoading && posts.map((p, i) => {
 				const active = p.slug === currentActiveSlug ? ' is-active' : '';
 				return (
 					<li key={p.slug} className={`post-item${active}`} style={{ animationDelay: `${i * 0.04}s` }} onClick={(e) => {
