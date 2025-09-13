@@ -353,9 +353,7 @@ export default function PostPage() {
       {isShowingLoading ? (
         <div className="post-content" aria-busy="true">
           {shouldShowSpinner ? (
-            <div className="fade-in">
-              <Spinner size={32} stroke={3} />
-            </div>
+            <Spinner size={32} stroke={3} />
           ) : null}
         </div>
       ) : post ? (

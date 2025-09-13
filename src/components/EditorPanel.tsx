@@ -70,7 +70,7 @@ export default function EditorPanel() {
   const params = useParams<{ slug?: string | string[] }>();
   const routeSlug = params?.slug ? (Array.isArray(params.slug) ? params.slug[0] : String(params.slug)) : undefined;
 
-  const [token, setToken] = useState<string | null>(null);
+  const [token, setToken] = useState<string | null>(() => (typeof window !== 'undefined' ? localStorage.getItem('token') : null));
   const [loginError, setLoginError] = useState<string>("");
   const titleRef = useRef<HTMLHeadingElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
@@ -135,10 +135,7 @@ export default function EditorPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoadingContent]);
 
-  useEffect(() => {
-    const t = typeof window !== 'undefined' ? localStorage.getItem("token") : null;
-    if (t) setToken(t);
-  }, []);
+  
 
   // Ticking clock for new/unsaved post meta
   useEffect(() => {
@@ -535,7 +532,7 @@ export default function EditorPanel() {
       ) : null}
       <article className={`post is-editor${!isUiHidden ? ' fade-in' : ''}`} aria-busy={uiLoading ? true : undefined}>
         {uiLoading ? (
-          <div className="fade-in" style={{ display: 'grid', placeItems: 'center', minHeight: 300 }}>
+          <div style={{ display: 'grid', placeItems: 'center', minHeight: 300 }}>
             <Spinner size={32} stroke={3} />
           </div>
         ) : null}

@@ -8,7 +8,7 @@ export default function LoadingEditor() {
     try { document.title = `Loading • ${SITE_NAME}`; } catch {}
   }, []);
   return (
-    <article className="post fade-in" aria-busy="true">
+    <article className="post" aria-busy="true">
       <div className="spinner" />
     </article>
   );

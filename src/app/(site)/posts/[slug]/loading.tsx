@@ -11,9 +11,7 @@ export default function LoadingPost() {
   return (
     <article className="post">
       <div className="post-content" aria-busy="true">
-        <div className="fade-in">
-          <Spinner size={32} stroke={3} />
-        </div>
+        <Spinner size={32} stroke={3} />
       </div>
     </article>
   );
