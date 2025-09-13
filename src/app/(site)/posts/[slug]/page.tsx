@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { SITE_NAME } from "@/lib/site";
+import { SITE_NAME, MAX_COMMENT_LENGTH } from "@/lib/site";
 import GoogleSignInButton from "@/components/GoogleSignInButton";
 import { useModal } from "@/components/Modal";
 import Spinner from "@/components/Spinner";
@@ -408,13 +408,18 @@ export default function PostPage() {
                   onChange={(e) => setNewComment(e.target.value)}
                   placeholder="Write a comment..."
                   rows={3}
+                  maxLength={MAX_COMMENT_LENGTH}
+                  className="comment-textarea"
                   style={{ width: '100%', border: '1px solid var(--border)', borderRadius: 10, padding: 12, outline: 'none', resize: 'vertical' }}
                 />
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginTop: 10 }}>
+                  <div className="post-meta" style={{ fontSize: 12, opacity: 0.8 }} aria-live="polite">
+                    {newComment.length}/{MAX_COMMENT_LENGTH}
+                  </div>
                   <button
                     type="button"
                     onClick={submitComment}
-                    disabled={!newComment.trim() || isPosting}
+                    disabled={!newComment.trim() || isPosting || newComment.length > MAX_COMMENT_LENGTH}
                     aria-busy={isPosting}
                     style={{ padding: '8px 14px', borderRadius: 10, display: 'inline-flex', alignItems: 'center', gap: 8, opacity: isPosting ? 0.7 : undefined, pointerEvents: isPosting ? 'none' : undefined }}
                   >

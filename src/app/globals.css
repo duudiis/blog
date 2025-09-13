@@ -120,6 +120,14 @@ body {
 .post-content li { margin: 6px 0; }
 .post-content blockquote { margin: 16px 0; padding-left: 16px; border-left: 3px solid var(--border); color: var(--muted); }
 .post-content a { color: var(--accent); text-decoration: underline; }
+/* Prevent horizontal overflow: wrap long words/URLs in post content */
+.post-content, .post-content * { overflow-wrap: anywhere; word-break: break-word; }
+
+/* Comments: ensure content preserves newlines and long tokens wrap */
+.comment-list p { white-space: pre-wrap; }
+.comments, .comment-list, .comment-list * { overflow-wrap: anywhere; word-break: break-word; }
+/* Allow flex children in comment items to shrink instead of overflowing */
+.comment-list li > div { min-width: 0; }
 
 /* Empty / not-found state */
 .empty-state { display: grid; place-items: center; text-align: center; gap: 6px; padding: 40px 0; color: var(--muted); }
@@ -177,14 +185,20 @@ input:focus, textarea:focus, .editor-toolbar .title-input:focus, .slug-input:foc
 .post-list::-webkit-scrollbar, .sidebar::-webkit-scrollbar {
 	width: 8px;
 }
-.post-list::-webkit-scrollbar-track, .sidebar::-webkit-scrollbar-track {
+.post-list::-webkit-scrollbar-track, .sidebar::-webkit-scrollbar-track, .comment-textarea::-webkit-scrollbar-track {
 	background: transparent;
 }
-.post-list::-webkit-scrollbar-thumb, .sidebar::-webkit-scrollbar-thumb {
+.post-list::-webkit-scrollbar-thumb, .sidebar::-webkit-scrollbar-thumb, .comment-textarea::-webkit-scrollbar-thumb {
 	background: color-mix(in srgb, var(--text) 12%, transparent);
 	border-radius: 8px;
 }
 .post-list {
+	scrollbar-width: thin;
+	scrollbar-color: color-mix(in srgb, var(--text) 12%, transparent) transparent;
+}
+
+/* Match slim scrollbar for textarea in Firefox */
+.comment-textarea {
 	scrollbar-width: thin;
 	scrollbar-color: color-mix(in srgb, var(--text) 12%, transparent) transparent;
 }

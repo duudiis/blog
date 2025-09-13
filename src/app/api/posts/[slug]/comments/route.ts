@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { all, get, initializeDatabase, run } from '@/lib/db';
 import { withAuth } from '@/lib/api';
+import { MAX_COMMENT_LENGTH } from '@/lib/site';
 
 type CommentRow = { id: number; author_email?: string; author_name?: string; author_picture?: string; content: string; created_at: string };
 
@@ -34,6 +35,10 @@ export const POST = withAuth(async (req: NextRequest, { params, auth }) => {
     const body = await req.json().catch(() => ({}));
     const content = (body.content || '').toString().trim();
     if (!content) return NextResponse.json({ error: 'Content required' }, { status: 400 });
+    // Enforce max comment length
+    if (content.length > MAX_COMMENT_LENGTH) {
+        return NextResponse.json({ error: `Comment is too long (max ${MAX_COMMENT_LENGTH} characters).` }, { status: 400 });
+    }
     // Enforce max 3 comments per user per post (except admins)
     if (!isAdmin) {
         const authorEmail = (auth.email || '').toLowerCase();
